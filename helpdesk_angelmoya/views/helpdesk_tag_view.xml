@@ -58,4 +58,4 @@
 
         <menuitem id="helpdesk_ticket_tag_menu" parent="helpdesk_menu_submenu"
             action="helpdesk_ticket_tag_action" sequence="40"/>
-        </odoo>
+</odoo>
