@@ -1,5 +1,6 @@
-from odoo import models, fields, api
-
+from odoo import models, fields, api, _
+from odoo.exceptions import ValidationError
+from datetime import timedelta
 
 class HelpdeskTicketAction(models.Model):
     _name = 'helpdesk.ticket.action'
@@ -7,6 +8,8 @@ class HelpdeskTicketAction(models.Model):
 
     name = fields.Char()
     date = fields.Date()
+    time = fields.Float(
+        string='Time')
     ticket_id = fields.Many2one(
         comodel_name='helpdesk.ticket',
         string='Ticket')
@@ -25,11 +28,23 @@ class HelpdeskTicketTag(models.Model):
         column2='ticket_id',
         string='Tickets')
 
+    @api.model
+    def cron_delete_tag(self):
+        tickets = self.search([('ticket_ids', '=', False)])
+        tickets.unlink()
 
 class HelpdeskTicket(models.Model):
     _name = 'helpdesk.ticket'
     _description = 'Ticket'
 
+    def _date_default_today(self):
+        return fields.Date.today()
+
+    @api.model
+    def default_get(self, dafault_fields):
+        vals = super(HelpdeskTicket, self).default_get(dafault_fields)
+        vals.update({'date': fields.Date.today() + timedelta(days=1)})
+        return vals
 
     name = fields.Char(
         string='Name',
@@ -49,7 +64,10 @@ class HelpdeskTicket(models.Model):
         string='State',
         default='nuevo')
     time = fields.Float(
-        string='Time')
+        string='Time',
+        compute='_get_time',
+        inverse='_set_time',
+        search='_search_time')
     assigned = fields.Boolean(
         string='Assigned',
         compute='_compute_assigned')
@@ -74,6 +92,24 @@ class HelpdeskTicket(models.Model):
         comodel_name='helpdesk.ticket.action',
         inverse_name='ticket_id',
         string='Ations')
+
+    @api.depends('action_ids.time')
+    def _get_time(self):
+        for record in self:
+            record.time = sum(record.action_ids.mapped('time'))
+
+    def _set_time(self):
+        for record in self:
+            if record.time:
+                time_now = sum(record.action_ids.mapped('time'))
+                next_time = record.time - time_now
+                if next_time:
+                    data = {'name': '/', 'time': next_time, 'date': fields.Date.today(), 'ticket_id': record.id}
+                    self.env['helpdesk.ticket.action'].create(data)
+    
+    def _search_time(self, operator, value):
+        actions = self.env['helpdesk.ticket.action'].search([('time', operator, value)])
+        return [('id', 'in', actions.mapped('ticket_id').ids)]
 
     def asignar(self):
         self.ensure_one()
@@ -122,9 +158,9 @@ class HelpdeskTicket(models.Model):
     def create_tag(self):
         self.ensure_one()
         # opción 1
-        self.write({
-            'tag_ids': [(0,0, {'name': self.tag_name})]
-        })
+        # self.write({
+        #     'tag_ids': [(0,0, {'name': self.tag_name})]
+        # })
         # # opción 2
         # tag = self.env['helpdesk.ticket.tag'].create({
         #     'name': self.tag_name
@@ -144,8 +180,28 @@ class HelpdeskTicket(models.Model):
         #     'name': self.tag_name,
         #     'ticket_ids': [(6, 0, self.ids)]
         # })
+        # self.tag_name = False
+
+        # pasa por contexto el valor del nombre y la relación con el ticket.
+        action = self.env.ref('helpdesk_angelmoya.action_new_tag').read()[0]
+        action['context'] = {
+            'default_name': self.tag_name,
+            'default_ticket_ids': [(6, 0, self.ids)]
+        }
+        # action['res_id'] = tag.id
         self.tag_name = False
+        return action
 
 
+    @api.constrains('time')
+    def _time_positive(self):
+        for ticket in self:
+            if ticket.time and ticket.time < 0:
+                raise ValidationError(_("The time can not be negative."))
+    
+    @api.onchange('date', 'time')
+    def _onchange_date(self):
+        self.date_limit = self.date and self.date + timedelta(hours=self.time)
 
+        
             
