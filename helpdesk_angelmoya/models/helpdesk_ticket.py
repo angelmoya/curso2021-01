@@ -36,6 +36,10 @@ class HelpdeskTicketTag(models.Model):
 class HelpdeskTicket(models.Model):
     _name = 'helpdesk.ticket'
     _description = 'Ticket'
+    _inherit = ['mail.thread.cc',
+                'mail.thread.blacklist',
+                'mail.activity.mixin']
+    _primary_email = 'email_from'
 
     def _date_default_today(self):
         return fields.Date.today()
@@ -92,6 +96,12 @@ class HelpdeskTicket(models.Model):
         comodel_name='helpdesk.ticket.action',
         inverse_name='ticket_id',
         string='Ations')
+    partner_id = fields.Many2one(
+        comodel_name='res.partner',
+        string='Partner')
+    email_from = fields.Char(
+        string='Email from')
+    
 
     @api.depends('action_ids.time')
     def _get_time(self):

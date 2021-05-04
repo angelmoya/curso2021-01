@@ -7,6 +7,7 @@
     "license": "AGPL-3",
     "depends": [
         "base",
+        "mail"
     ],
     "data": [
         "data/delete_tag_cron.xml",
